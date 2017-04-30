@@ -1,6 +1,9 @@
 package mapreduce
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 // schedule starts and waits for all tasks in the given phase (Map or Reduce).
 func (mr *Master) schedule(phase jobPhase) {
@@ -24,5 +27,45 @@ func (mr *Master) schedule(phase jobPhase) {
 	//
 	// TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
 	//
+
+	var wg sync.WaitGroup
+
+	for i := 0; i < ntasks; i++ {
+		wg.Add(1)
+
+		// Extract worker outside the goroutine for restarting work.
+		worker := <-mr.registerChannel
+
+		// Each task is correlate with i, therefore if the task execute failed,
+		// use i = i - 1 can restart the task.
+		go func(v int, phase jobPhase, nios int, worker string) {
+
+			defer wg.Done()
+
+			args := DoTaskArgs{
+				JobName:       mr.jobName,
+				File:          mr.files[v],
+				Phase:         phase,
+				TaskNumber:    v,
+				NumOtherPhase: nios,
+			}
+
+			ok := call(worker, "Worker.DoTask", args, new(struct{}))
+			if !ok {
+				// Restart the task(for mapper, reread mr.files[v]).
+				i = i - 1
+				fmt.Println("call worker error!")
+			} else {
+				go func() {
+					mr.registerChannel <- worker
+				}()
+			}
+
+		}(i, phase, nios, worker)
+
+	}
+
+	wg.Wait()
+
 	fmt.Printf("Schedule: %v phase done\n", phase)
 }
