@@ -33,7 +33,8 @@ func (mr *Master) schedule(phase jobPhase) {
 	for i := 0; i < ntasks; i++ {
 		wg.Add(1)
 
-		// Extract worker outside the goroutine for restarting work.
+		// Extract worker outside the goroutine for restarting task.
+		// Question: why does it fail when a worker is fetched in goroutine?
 		worker := <-mr.registerChannel
 
 		// Each task is correlate with i, therefore if the task execute failed,
@@ -52,7 +53,7 @@ func (mr *Master) schedule(phase jobPhase) {
 
 			ok := call(worker, "Worker.DoTask", args, new(struct{}))
 			if !ok {
-				// Restart the task(for mapper, reread mr.files[v]).
+				// Restart the task(for mapper, reread mr.files[i).
 				i = i - 1
 				fmt.Println("call worker error!")
 			} else {
